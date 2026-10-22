@@ -85,7 +85,7 @@ The frontend build produces frontend/dist. Deploy it using static hosting, with 
 
 ## Next implementation steps
 
-MongoDB is connected using the official Node.js driver. Add issue models/services/controllers/routes and build issue list and creation pages next. Issue creation is implemented. Listing, editing, deleting, and authentication are not implemented yet.
+The assessment backend is implemented: CRUD, status updates, search, filters, and overdue calculation. Connect the frontend forms, table, deletion confirmation, and periodic overdue refresh next. Authentication is outside this assessment scope.
 
 ## GitHub
 
@@ -147,3 +147,27 @@ Request flow: route -> controller -> service -> repository -> MongoDB. Responses
 Validators and application errors support the business layer. Connection setup in server.js is application startup infrastructure. The health endpoint follows the same controller/service/repository flow. These are logical layers within one Express application, not separate deployed servers.
 
 Service tests call the business layer directly to verify validation cannot be bypassed by a future non-HTTP caller. Existing HTTP and live MongoDB tests verify the entire request flow.
+
+## Complete issue API
+
+| Method | Endpoint | Response |
+| --- | --- | --- |
+| POST | /api/issues | 201, { issue } |
+| GET | /api/issues | 200, { issues: [...] } |
+| GET | /api/issues/:id | 200, { issue } |
+| PATCH | /api/issues/:id | 200, { issue } |
+| DELETE | /api/issues/:id | 204, empty body |
+
+List results are sorted by report time descending, then ID descending. No pagination is used for this small local assessment app. Optional query parameters: search (case-insensitive literal substring in clientName OR title, maximum 200 characters), priority (Low/Medium/High), status (Open/In Progress/Resolved). Combine parameters with AND; omit a filter for All. Empty search matches everything. Unsupported, repeated, or invalid parameters return 400.
+
+Example: GET /api/issues?search=Nova&priority=High&status=Open
+
+PATCH accepts one or more of clientName, title, description, priority, status. The same text limits apply as creation. Status may move between any of the three allowed values, including reopening a resolved issue. Fields omitted from PATCH remain unchanged. ID, reportedAt, and isOverdue cannot be supplied or modified. Invalid IDs return 400; valid IDs with no matching issue return 404. Invalid updates do not modify the document. Concurrent edits use last-write-wins for fields included in each update.
+
+All returned issues include isOverdue. It is true only for High priority, a status other than Resolved, and a report time strictly more than 24 hours before the server's current time. It is calculated on each request and never stored. Resolving an issue or lowering its priority removes the overdue flag. Frontend clients should refetch periodically (for example every minute) or recalculate from reportedAt so highlighting updates while a page remains open. Display UTC timestamps in the user's local timezone.
+
+The frontend must ask for confirmation before calling DELETE; cancellation should send no request. This API performs a permanent deletion after receiving DELETE. No confirmation dialog can be displayed by the backend itself.
+
+Tests cover create-to-delete persistence, status transitions, immutable fields, invalid IDs, missing records, combined filters, literal special-character search, ordering, validation failures, and overdue boundaries. Integration tests clean up their uniquely marked fictional records.
+
+This backend is intended for the local assessment. It has no authentication, role permissions, or audit history, and should not be exposed as a public production service as-is.
