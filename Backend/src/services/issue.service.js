@@ -1,15 +1,15 @@
-const database = require('../config/database');
+const issueRepository = require('../repositories/issue.repository');
+const { validateNewIssue } = require('../validators/issue.validator');
+const { ValidationError } = require('../errors/validation.error');
 
-async function createIssue(values) {
+async function createIssue(input) {
+  const { value, errors } = validateNewIssue(input);
+  if (Object.keys(errors).length) throw new ValidationError(errors);
   const issue = {
-    clientName: values.clientName,
-    title: values.title,
-    description: values.description,
-    priority: values.priority,
+    ...value,
     status: 'Open',
     reportedAt: new Date(),
   };
-  const result = await database.getDatabase().collection('issues').insertOne(issue, { timeoutMS: 10000 });
-  return { ...issue, _id: result.insertedId };
+  return issueRepository.insertIssue(issue);
 }
 module.exports = { createIssue };

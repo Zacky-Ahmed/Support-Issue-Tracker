@@ -1,11 +1,7 @@
-const { pingDatabase } = require('../config/database');
+const { checkHealth } = require('../services/health.service');
 
 async function getHealth(req, res) {
-  try {
-    await pingDatabase();
-    res.json({ status: 'ok', service: 'Support Issue Tracker API', database: 'connected' });
-  } catch {
-    res.status(503).json({ status: 'error', service: 'Support Issue Tracker API', database: 'unavailable' });
-  }
+  const health = await checkHealth();
+  res.status(health.status === 'ok' ? 200 : 503).json(health);
 }
 module.exports = { getHealth };

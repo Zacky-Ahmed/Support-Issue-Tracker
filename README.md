@@ -8,11 +8,14 @@ Project foundation using Express 5 and React with Vite. Use Node.js 22.12+ (Node
 Backend/
   src/
     config/          Environment configuration
-    controllers/     HTTP request handlers
+    controllers/     Presentation layer: HTTP request handlers
     middleware/      404 and centralized error handling
     models/          Future database models
     routes/          API route definitions
-    services/        Future business logic
+    services/        Business layer: validation and issue rules
+    repositories/    Data layer: MongoDB operations
+    validators/      Input validation used by services
+    errors/          Application error types
     app.js           Express application
     server.js        Server entry point
   .env.example
@@ -132,3 +135,15 @@ npm --prefix Backend run test:integration
 The first command tests HTTP validation, field boundaries, generated values, and database failure handling with a stubbed database. It needs no MongoDB credentials.
 
 The integration command uses Backend/.env and requires MongoDB read/write/delete access. It creates a fictional record with a unique test marker, reads it back to verify storage, checks invalid input is not saved, and removes only records bearing that marker in cleanup. An interrupted test may leave its temporary record behind.
+
+## Three-layer backend architecture
+
+Request flow: route -> controller -> service -> repository -> MongoDB. Responses return through these layers.
+
+1. Presentation layer: routes select controllers; controllers read HTTP input and send responses. Middleware translates application errors into HTTP status codes.
+2. Business layer: services validate inputs, enforce rules, and assign default status and report time. Services have no Express request/response objects and no MongoDB queries.
+3. Data access layer: repositories perform MongoDB operations using the shared connection configuration. They have no HTTP responsibilities.
+
+Validators and application errors support the business layer. Connection setup in server.js is application startup infrastructure. The health endpoint follows the same controller/service/repository flow. These are logical layers within one Express application, not separate deployed servers.
+
+Service tests call the business layer directly to verify validation cannot be bypassed by a future non-HTTP caller. Existing HTTP and live MongoDB tests verify the entire request flow.
