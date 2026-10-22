@@ -85,7 +85,7 @@ The frontend build produces frontend/dist. Deploy it using static hosting, with 
 
 ## Next implementation steps
 
-The assessment backend is implemented: CRUD, status updates, search, filters, and overdue calculation. Connect the frontend forms, table, deletion confirmation, and periodic overdue refresh next. Authentication is outside this assessment scope.
+The assessment backend is implemented: CRUD, status updates, search, filters, and overdue calculation. The frontend includes forms, table/mobile cards, deletion confirmation, and periodic overdue recalculation. Authentication is outside this assessment scope.
 
 ## GitHub
 
@@ -171,3 +171,7 @@ The frontend must ask for confirmation before calling DELETE; cancellation shoul
 Tests cover create-to-delete persistence, status transitions, immutable fields, invalid IDs, missing records, combined filters, literal special-character search, ordering, validation failures, and overdue boundaries. Integration tests clean up their uniquely marked fictional records.
 
 This backend is intended for the local assessment. It has no authentication, role permissions, or audit history, and should not be exposed as a public production service as-is.
+
+## Frontend design and behavior
+
+The Mouse Soft support desk uses a warm paper palette, serif headlines, a compact issue ledger, and an orange attention accent. It is fully connected to the API; demo records are not injected. Search and filters operate together on the loaded list. Use Refresh to see changes from other sessions. See frontend/README.md for browser verification details.
