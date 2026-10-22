@@ -82,7 +82,7 @@ The frontend build produces frontend/dist. Deploy it using static hosting, with 
 
 ## Next implementation steps
 
-MongoDB is connected using the official Node.js driver. Add issue models/services/controllers/routes and build issue list and creation pages next. Authentication and issue CRUD are not implemented yet.
+MongoDB is connected using the official Node.js driver. Add issue models/services/controllers/routes and build issue list and creation pages next. Issue creation is implemented. Listing, editing, deleting, and authentication are not implemented yet.
 
 ## GitHub
 
@@ -102,3 +102,33 @@ Set MONGODB_URI and MONGODB_DB_NAME in Backend/.env before starting. Keep creden
 Run `npm --prefix Backend run db:check` from the project root to connect and ping the configured database without writing data. The API starts only after a successful connection. GET /api/health pings MongoDB and returns HTTP 200 with database: connected, or HTTP 503 with database: unavailable. The connection closes on shutdown.
 
 A successful ping verifies connectivity, not collection write permissions. This setup creates no collections or records.
+
+## Create an issue
+
+POST /api/issues with Content-Type: application/json:
+
+```json
+{
+  "clientName": "Nova Tech",
+  "title": "Payment gateway failing",
+  "description": "Fictional example: customers cannot complete payments.",
+  "priority": "High"
+}
+```
+
+Success: HTTP 201 with an issue object containing the saved fields, MongoDB _id, status Open, and an ISO reportedAt timestamp. MongoDB stores the timestamp as a Date. Each POST creates a new issue.
+
+Client name, title, and description must be non-empty strings after trimming, with maximum lengths of 120, 200, and 5000 characters respectively. Priority must be exactly Low, Medium, or High. Extra fields (including _id, status, and reportedAt) are rejected. Validation errors return HTTP 400 with a message and field errors. Malformed JSON returns 400, oversized requests return 413, and unsupported content types return 415. Unexpected server errors return a generic 500 response.
+
+### Backend tests
+
+Run from the repository root:
+
+```powershell
+npm --prefix Backend test
+npm --prefix Backend run test:integration
+```
+
+The first command tests HTTP validation, field boundaries, generated values, and database failure handling with a stubbed database. It needs no MongoDB credentials.
+
+The integration command uses Backend/.env and requires MongoDB read/write/delete access. It creates a fictional record with a unique test marker, reads it back to verify storage, checks invalid input is not saved, and removes only records bearing that marker in cleanup. An interrupted test may leave its temporary record behind.
