@@ -30,7 +30,7 @@ test('full CRUD, literal search, combined filters, overdue and HTTP errors', asy
   assert.equal(response.status,200);
   assert.equal((await response.json()).issue.isOverdue,true);
   for (const status of ['In Progress','Resolved','Open']) {
-   response=await request('/'+first._id,'PATCH',{status,title:'Updated '+marker});
+   response=await request('/'+first._id,'PATCH',{status,title:'Updated '+marker,assignedEngineer:'Alex Morgan'});
    assert.equal(response.status,200);
    const issue=(await response.json()).issue;
    assert.equal(issue.status,status);

@@ -8,4 +8,5 @@ async function listIssues(req, res) { res.json({ issues: await service.listIssue
 async function getIssue(req, res) { res.json({ issue: await service.getIssue(req.params.id) }); }
 async function editIssue(req, res) { res.json({ issue: await service.editIssue(req.params.id, req.body) }); }
 async function deleteIssue(req, res) { await service.removeIssue(req.params.id); res.status(204).end(); }
-module.exports = { requireJson, addIssue, listIssues, getIssue, editIssue, deleteIssue };
+function listEngineers(req, res) { res.json({ engineers: service.listEngineers() }); }
+module.exports = { listEngineers, requireJson, addIssue, listIssues, getIssue, editIssue, deleteIssue };

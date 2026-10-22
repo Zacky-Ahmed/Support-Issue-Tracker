@@ -10,6 +10,7 @@ async function findIssues(filters) {
   const query = {};
   if (filters.priority) query.priority = filters.priority;
   if (filters.status) query.status = filters.status;
+  if (filters.assignedEngineer) query.assignedEngineer = filters.assignedEngineer === 'Unassigned' ? { $in: ['', null] } : filters.assignedEngineer;
   if (filters.search) {
     // Escape regex syntax so search always means literal text.
     const pattern = filters.search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -18,8 +19,10 @@ async function findIssues(filters) {
   return collection().find(query, options).sort({ reportedAt: -1, _id: -1 }).toArray();
 }
 async function findIssue(id) { return collection().findOne({ _id: new ObjectId(id) }, options); }
-async function updateIssue(id, changes) {
-  return collection().findOneAndUpdate({ _id: new ObjectId(id) }, { $set: changes }, { ...options, returnDocument: 'after', includeResultMetadata: false });
+async function updateIssue(id, changes, expected) {
+  // Compare the fields used by the resolution rule to prevent concurrent bypasses.
+  const query = { _id: new ObjectId(id), status: expected.status, assignedEngineer: expected.assignedEngineer ?? null };
+  return collection().findOneAndUpdate(query, { $set: changes }, { ...options, returnDocument: 'after', includeResultMetadata: false });
 }
 async function deleteIssue(id) {
   const result = await collection().deleteOne({ _id: new ObjectId(id) }, options);

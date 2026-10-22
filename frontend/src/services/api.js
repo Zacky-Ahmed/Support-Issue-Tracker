@@ -22,3 +22,5 @@ export const saveIssue = (id, body) => request('/issues' + (id ? '/' + id : ''),
   method: id ? 'PATCH' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
 })
 export const deleteIssue = id => request('/issues/' + id, { method: 'DELETE' })
+
+export const getEngineers = signal => request('/engineers', { signal })

@@ -175,3 +175,14 @@ This backend is intended for the local assessment. It has no authentication, rol
 ## Frontend design and behavior
 
 The Mouse Soft support desk uses a warm paper palette, serif headlines, a compact issue ledger, and an orange attention accent. It is fully connected to the API; demo records are not injected. Search and filters operate together on the loaded list. Use Refresh to see changes from other sessions. See frontend/README.md for browser verification details.
+## Assigned Engineer
+
+The fictional engineer roster is defined in Backend/src/config/engineers.js and exposed by GET /api/engineers. The UI loads its choices from this endpoint.
+
+POST and PATCH /api/issues accept assignedEngineer: a roster name or an empty string for Unassigned. Creation defaults to Unassigned. Existing records without this field remain readable and appear as Unassigned; no historical records are silently changed.
+
+An issue cannot become or remain Resolved through an update unless its resulting assignedEngineer is a valid roster member. Assigning and resolving in one PATCH is supported. Clearing the assignment on a resolved issue is rejected with HTTP 400 and an assignedEngineer field error. Reopening and clearing the assignment together is allowed. Updates compare the stored status and assignment atomically; conflicting changes return 409 and require a refresh.
+
+GET /api/issues supports assignedEngineer=Alex%20Morgan (or another roster name) and assignedEngineer=Unassigned. This filter combines with search, priority, and status. The UI includes assignment in create/edit forms, a list column, and a combined engineer filter. Attempting to resolve an unassigned issue from the row opens its editor with guidance; no status change is sent.
+
+Verification: 55 automated tests and 3 live MongoDB integration tests passed, including assignment persistence, invalid names/types, unassigned resolution rejection, reassignment, resolved-assignment removal rejection, legacy missing fields, combined filters, and concurrent resolve/unassign operations. Previous CRUD, timestamp, overdue, validation, and error tests also passed. Temporary integration records were cleaned up. Frontend lint and production build passed. Final browser interaction verification for this requirement was unavailable because browser control was disabled in Work settings.

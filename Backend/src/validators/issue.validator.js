@@ -1,3 +1,4 @@
+const { ENGINEERS } = require('../config/engineers');
 const PRIORITIES = ['Low', 'Medium', 'High'];
 const STATUSES = ['Open', 'In Progress', 'Resolved'];
 const LIMITS = { clientName: 120, title: 200, description: 5000 };
@@ -18,7 +19,11 @@ function validateIssue(body, partial = false) {
     if (!STATUSES.includes(body.status)) errors.status = 'Status must be Open, In Progress, or Resolved.';
     else value.status = body.status;
   }
-  const allowed = [...Object.keys(LIMITS), 'priority', ...(partial ? ['status'] : [])];
+  if (Object.hasOwn(body, 'assignedEngineer')) {
+    if (typeof body.assignedEngineer !== 'string' || (body.assignedEngineer !== '' && !ENGINEERS.includes(body.assignedEngineer))) errors.assignedEngineer = 'Select an engineer from the list, or leave the issue unassigned.';
+    else value.assignedEngineer = body.assignedEngineer;
+  } else if (!partial) value.assignedEngineer = '';
+  const allowed = [...Object.keys(LIMITS), 'priority', 'assignedEngineer', ...(partial ? ['status'] : [])];
   if (Object.keys(body).some(key => !allowed.includes(key))) errors.fields = 'Only these fields are accepted: ' + allowed.join(', ');
   if (partial && !Object.keys(body).length) errors.body = 'Provide at least one field to update.';
   return { value, errors };
@@ -27,12 +32,12 @@ function validateNewIssue(body) { return validateIssue(body); }
 function validateIssueUpdate(body) { return validateIssue(body, true); }
 function validateQuery(query) {
   const errors = {}, value = {};
-  if (Object.keys(query).some(key => !['search', 'priority', 'status'].includes(key))) errors.query = 'Supported query parameters: search, priority, status.';
+  if (Object.keys(query).some(key => !['search', 'priority', 'status', 'assignedEngineer'].includes(key))) errors.query = 'Supported query parameters: search, priority, status, assignedEngineer.';
   if (query.search !== undefined) {
     if (typeof query.search !== 'string' || query.search.trim().length > 200) errors.search = 'Search must be a string of at most 200 characters.';
     else value.search = query.search.trim();
   }
-  for (const [field, options] of [['priority', PRIORITIES], ['status', STATUSES]]) {
+  for (const [field, options] of [['priority', PRIORITIES], ['status', STATUSES], ['assignedEngineer', [...ENGINEERS, 'Unassigned']]]) {
     if (query[field] !== undefined) {
       if (!options.includes(query[field])) errors[field] = 'Invalid ' + field + ' filter.';
       else value[field] = query[field];

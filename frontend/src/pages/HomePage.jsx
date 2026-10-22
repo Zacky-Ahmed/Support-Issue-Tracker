@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
-import { getIssues, saveIssue, deleteIssue } from '../services/api'
+import { getIssues, getEngineers, saveIssue, deleteIssue } from '../services/api'
 
 const statuses = ['Open', 'In Progress', 'Resolved']
-const blank = { clientName: '', title: '', description: '', priority: 'Medium', status: 'Open' }
+const blank = { clientName: '', title: '', description: '', priority: 'Medium', status: 'Open', assignedEngineer: '' }
 const date = value => new Date(value).toLocaleString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })
 const overdue = (issue, now) => issue.priority === 'High' && issue.status !== 'Resolved' && now - new Date(issue.reportedAt).getTime() > 86400000
 
@@ -22,6 +22,8 @@ function Modal({ title, children, close, busy, className = '' }) {
 
 export default function HomePage() {
   const [issues, setIssues] = useState([])
+  const [engineers, setEngineers] = useState([])
+  const [engineerFilter, setEngineerFilter] = useState('All')
   const [loading, setLoading] = useState(true)
   const [loaded, setLoaded] = useState(false)
   const [error, setError] = useState('')
@@ -45,15 +47,15 @@ export default function HomePage() {
     const version = ++loadVersion.current
     setLoading(true); setError('')
     try {
-      const data = await getIssues(signal)
-      if (version === loadVersion.current) { setIssues(data.issues); setLoaded(true) }
+      const [data, roster] = await Promise.all([getIssues(signal), getEngineers(signal)])
+      if (version === loadVersion.current) { setIssues(data.issues); setEngineers(roster.engineers); setLoaded(true) }
     } catch (err) { if (err.name !== 'AbortError' && version === loadVersion.current) setError(err.message) }
     finally { if (!signal?.aborted && version === loadVersion.current) setLoading(false) }
   }
   useEffect(() => {
     const controller = new AbortController()
     // Fetch completion updates state; the initial render already shows loading.
-    getIssues(controller.signal).then(data => { setIssues(data.issues); setLoaded(true); setLoading(false) }).catch(err => { if (err.name !== 'AbortError') { setError(err.message); setLoading(false) } })
+    Promise.all([getIssues(controller.signal), getEngineers(controller.signal)]).then(([data, roster]) => { setIssues(data.issues); setEngineers(roster.engineers); setLoaded(true); setLoading(false) }).catch(err => { if (err.name !== 'AbortError') { setError(err.message); setLoading(false) } })
     const timer = setInterval(() => setNow(Date.now()), 30000)
     return () => { controller.abort(); clearInterval(timer) }
   }, [])
@@ -66,18 +68,19 @@ export default function HomePage() {
   const visible = issues.filter(issue => {
     const term = query.trim().toLowerCase()
     return (issue.clientName.toLowerCase().includes(term) || issue.title.toLowerCase().includes(term)) &&
-      (priority === 'All' || issue.priority === priority) && (status === 'All' || issue.status === status) && (!onlyOverdue || overdue(issue, now))
+      (priority === 'All' || issue.priority === priority) && (status === 'All' || issue.status === status) && (engineerFilter === 'All' || (engineerFilter === 'Unassigned' ? !issue.assignedEngineer : issue.assignedEngineer === engineerFilter)) && (!onlyOverdue || overdue(issue, now))
   })
-  const filtered = query || priority !== 'All' || status !== 'All' || onlyOverdue
-  const reset = () => { setQuery(''); setPriority('All'); setStatus('All'); setOnlyOverdue(false) }
+  const filtered = query || priority !== 'All' || status !== 'All' || engineerFilter !== 'All' || onlyOverdue
+  const reset = () => { setQuery(''); setPriority('All'); setStatus('All'); setEngineerFilter('All'); setOnlyOverdue(false) }
   function openEditor(issue) {
-    setEditor(issue || {}); setForm(issue ? { clientName: issue.clientName, title: issue.title, description: issue.description, priority: issue.priority, status: issue.status } : { ...blank })
+    setEditor(issue || {}); setForm(issue ? { clientName: issue.clientName, title: issue.title, description: issue.description, priority: issue.priority, status: issue.status, assignedEngineer: issue.assignedEngineer || '' } : { ...blank })
     setFormError(''); setFields({})
   }
   async function submit(event) {
     event.preventDefault()
     const invalid = {}
     for (const key of ['clientName', 'title', 'description']) if (!form[key].trim()) invalid[key] = 'This field cannot be empty.'
+    if (editor._id && form.status === 'Resolved' && !form.assignedEngineer) invalid.assignedEngineer = 'Select an engineer before resolving this issue.'
     setFields(invalid)
     if (Object.keys(invalid).length) { setFormError('Please check the highlighted fields.'); return }
     setBusy(true); setFormError('')
@@ -91,6 +94,9 @@ export default function HomePage() {
     finally { setBusy(false) }
   }
   async function changeStatus(issue, nextStatus) {
+    if (nextStatus === 'Resolved' && !issue.assignedEngineer) {
+      openEditor(issue); setFormError('Assign an engineer before resolving this issue.'); setFields({ assignedEngineer: 'An engineer is required to resolve this issue.' }); return
+    }
     setRowBusy(issue._id); setError('')
     try {
       const data = await saveIssue(issue._id, { status: nextStatus })
@@ -129,11 +135,11 @@ export default function HomePage() {
       {error && <div className="error-banner" role="alert"><span>{error}</span><button disabled={loading || !!rowBusy} onClick={() => load()}>Reload issues ↻</button></div>}
       <section className="register">
         <header className="register-head"><div><span className="eyebrow">THE WORKING RECORD</span><h2>{onlyOverdue ? 'Needs attention' : 'Issue register'} <span>{visible.length}</span></h2></div><button className="text-button" disabled={loading || !!rowBusy} onClick={() => load()}>{loading ? 'Refreshing…' : '↻ Refresh'}</button></header>
-        <div className="filters"><label className="search"><span aria-hidden="true">⌕</span><input type="search" aria-label="Search issues" placeholder="Search a client or an issue…" value={query} maxLength={200} onChange={e => setQuery(e.target.value)}/><kbd>SEARCH</kbd></label><select aria-label="Filter priority" value={priority} onChange={e => setPriority(e.target.value)}><option value="All">All priorities</option>{['High','Medium','Low'].map(p => <option key={p}>{p}</option>)}</select><select aria-label="Filter status" value={status} onChange={e => setStatus(e.target.value)}><option value="All">All statuses</option>{statuses.map(s => <option key={s}>{s}</option>)}</select></div>
+        <div className="filters"><label className="search"><span aria-hidden="true">⌕</span><input type="search" aria-label="Search issues" placeholder="Search a client or an issue…" value={query} maxLength={200} onChange={e => setQuery(e.target.value)}/><kbd>SEARCH</kbd></label><select aria-label="Filter priority" value={priority} onChange={e => setPriority(e.target.value)}><option value="All">All priorities</option>{['High','Medium','Low'].map(p => <option key={p}>{p}</option>)}</select><select aria-label="Filter status" value={status} onChange={e => setStatus(e.target.value)}><option value="All">All statuses</option>{statuses.map(s => <option key={s}>{s}</option>)}</select><select aria-label="Filter engineer" value={engineerFilter} onChange={e => setEngineerFilter(e.target.value)}><option value="All">All engineers</option><option>Unassigned</option>{engineers.map(name => <option key={name}>{name}</option>)}</select></div>
         {filtered && <div className="filter-summary"><span>{visible.length} matching {visible.length === 1 ? 'issue' : 'issues'}{onlyOverdue ? ' · Overdue only' : ''}</span><button className="text-button" onClick={reset}>Clear filters ×</button></div>}
-        {loading && !loaded ? <div className="empty"><span className="empty-symbol">◌</span><h3>Opening the register…</h3><p>Fetching your saved issues.</p></div> : !loaded ? <div className="empty"><h3>We couldn’t open the register.</h3><p>Use “Reload issues” above to try again.</p></div> : !visible.length ? <div className="empty"><span className="empty-symbol">{filtered ? '⌕' : '＋'}</span><h3>{filtered ? 'No matches in this view.' : 'A clear desk. A fresh start.'}</h3><p>{filtered ? 'Try a different search or clear the filters.' : 'Record your first client issue. We’ll keep the details together.'}</p><button className="secondary" onClick={filtered ? reset : () => openEditor(null)}>{filtered ? 'Clear filters' : 'Record an issue ↗'}</button></div> : <div className="table-scroll"><table><thead><tr><th>ISSUE / CLIENT</th><th>PRIORITY</th><th>STATUS</th><th>REPORTED</th><th><span className="sr-only">Actions</span></th></tr></thead><tbody>{visible.map(issue => {
+        {loading && !loaded ? <div className="empty"><span className="empty-symbol">◌</span><h3>Opening the register…</h3><p>Fetching your saved issues.</p></div> : !loaded ? <div className="empty"><h3>We couldn’t open the register.</h3><p>Use “Reload issues” above to try again.</p></div> : !visible.length ? <div className="empty"><span className="empty-symbol">{filtered ? '⌕' : '＋'}</span><h3>{filtered ? 'No matches in this view.' : 'A clear desk. A fresh start.'}</h3><p>{filtered ? 'Try a different search or clear the filters.' : 'Record your first client issue. We’ll keep the details together.'}</p><button className="secondary" onClick={filtered ? reset : () => openEditor(null)}>{filtered ? 'Clear filters' : 'Record an issue ↗'}</button></div> : <div className="table-scroll"><table><thead><tr><th>ISSUE / CLIENT</th><th>ENGINEER</th><th>PRIORITY</th><th>STATUS</th><th>REPORTED</th><th><span className="sr-only">Actions</span></th></tr></thead><tbody>{visible.map(issue => {
           const late = overdue(issue, now)
-          return <tr key={issue._id} className={late ? 'overdue-row' : ''}><td className="issue-cell"><div className="issue-meta"><span title={issue._id}>#{issue._id.slice(-8).toUpperCase()}</span><span className="client-name">{issue.clientName}</span>{late && <span className="overdue-tag">◷ OVERDUE</span>}</div><button className="issue-title" onClick={() => openEditor(issue)} disabled={!!rowBusy || loading}>{issue.title}</button><p className="issue-description">{issue.description}</p></td><td><span className={'priority '+issue.priority.toLowerCase()}><span aria-hidden="true">{issue.priority === 'High' ? '↑' : issue.priority === 'Medium' ? '＝' : '↓'}</span>{issue.priority}</span></td><td><select className={'status '+issue.status.toLowerCase().replaceAll(' ','-')} aria-label={'Status for '+issue.title} value={issue.status} disabled={!!rowBusy || loading} onChange={e => changeStatus(issue,e.target.value)}>{statuses.map(s => <option key={s}>{s}</option>)}</select></td><td className="date-cell">{date(issue.reportedAt)}</td><td><div className="row-actions"><button aria-label={'Edit '+issue.title} title="Edit issue" disabled={!!rowBusy || loading} onClick={() => openEditor(issue)}>↗</button><button aria-label={'Delete '+issue.title} title="Delete issue" disabled={!!rowBusy || loading} onClick={() => { setDeleting(issue); setDeleteError('') }}>×</button></div></td></tr>
+          return <tr key={issue._id} className={late ? 'overdue-row' : ''}><td className="issue-cell"><div className="issue-meta"><span title={issue._id}>#{issue._id.slice(-8).toUpperCase()}</span><span className="client-name">{issue.clientName}</span>{late && <span className="overdue-tag">◷ OVERDUE</span>}</div><button className="issue-title" onClick={() => openEditor(issue)} disabled={!!rowBusy || loading}>{issue.title}</button><p className="issue-description">{issue.description}</p></td><td className="engineer-cell"><span className={issue.assignedEngineer ? 'engineer-name' : 'unassigned'}>{issue.assignedEngineer || 'Unassigned'}</span></td><td><span className={'priority '+issue.priority.toLowerCase()}><span aria-hidden="true">{issue.priority === 'High' ? '↑' : issue.priority === 'Medium' ? '＝' : '↓'}</span>{issue.priority}</span></td><td><select className={'status '+issue.status.toLowerCase().replaceAll(' ','-')} aria-label={'Status for '+issue.title} value={issue.status} disabled={!!rowBusy || loading} onChange={e => changeStatus(issue,e.target.value)}>{statuses.map(s => <option key={s}>{s}</option>)}</select></td><td className="date-cell">{date(issue.reportedAt)}</td><td><div className="row-actions"><button aria-label={'Edit '+issue.title} title="Edit issue" disabled={!!rowBusy || loading} onClick={() => openEditor(issue)}>↗</button><button aria-label={'Delete '+issue.title} title="Delete issue" disabled={!!rowBusy || loading} onClick={() => { setDeleting(issue); setDeleteError('') }}>×</button></div></td></tr>
         })}</tbody></table></div>}
         <footer className="register-footer"><span>{loaded ? `${visible.length} of ${issues.length} issues` : 'Waiting for records'} <span className="slash">/</span> Newest first</span><span><span className="dot"/> {loading ? 'Syncing…' : loaded ? 'Saved to your workspace' : 'Not connected'}</span></footer>
       </section>
@@ -147,6 +153,7 @@ export default function HomePage() {
         {formError && <div className="form-error" role="alert">{formError}</div>}
         <fieldset disabled={busy}>
           {['clientName','title','description'].map(key => <label className="field" key={key}>{key === 'clientName' ? 'Client name' : key === 'title' ? 'Issue title' : 'Description'} <span className="required">*</span>{key === 'description' ? <textarea rows={5} maxLength={5000} value={form[key]} aria-invalid={!!fields[key]} aria-describedby={fields[key] ? key+'-error' : undefined} onChange={e => setForm({...form,[key]:e.target.value})} placeholder="What happened? Include the impact and any useful details."/> : <input autoFocus={key === 'clientName'} maxLength={key === 'title' ? 200 : 120} value={form[key]} aria-invalid={!!fields[key]} aria-describedby={fields[key] ? key+'-error' : undefined} onChange={e => setForm({...form,[key]:e.target.value})} placeholder={key === 'clientName' ? 'e.g. Nova Tech' : 'A short, specific summary'}/>}{fields[key] && <small id={key+'-error'} className="field-error">{fields[key]}</small>}</label>)}
+          <label className="field">Assigned Engineer<select aria-label="Assigned Engineer" value={form.assignedEngineer} aria-invalid={!!fields.assignedEngineer} aria-describedby="engineer-help" onChange={e => setForm({...form,assignedEngineer:e.target.value})}><option value="">Unassigned</option>{engineers.map(name => <option key={name}>{name}</option>)}</select><small id="engineer-help" className={fields.assignedEngineer ? 'field-error' : 'field-hint'}>{fields.assignedEngineer || 'Required before an issue can be resolved.'}</small></label>
           <div className="form-columns"><label className="field">Priority<select value={form.priority} onChange={e => setForm({...form,priority:e.target.value})}>{['Low','Medium','High'].map(p => <option key={p}>{p}</option>)}</select></label>{editor._id ? <label className="field">Status<select value={form.status} onChange={e => setForm({...form,status:e.target.value})}>{statuses.map(s => <option key={s}>{s}</option>)}</select></label> : <div className="new-status"><small>STARTING STATUS</small><span>○ Open</span></div>}</div>
         </fieldset>
         <p className="form-note">{editor._id ? 'The original ID and report time will stay unchanged.' : 'An issue ID and report time are assigned when you save.'}</p>
